@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Golf Round Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html{font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial,Apple Color Emoji,Segoe UI Emoji}
+    body::-webkit-scrollbar{display:none}
+    body{-ms-overflow-style:none;scrollbar-width:none}
+    .btn-toggle{border-width:2px;border-radius:.5rem;padding:.375rem .5rem;display:inline-flex;align-items:center;justify-content:center;font-weight:600}
+    .btn-toggle.on{background:#10b981;color:white;border-color:#10b981}
+    .pill{border:1px solid #e5e7eb;border-radius:9999px;padding:.25rem .5rem;font-size:.75rem;cursor:pointer;user-select:none}
+    .score-ok{color:#059669;font-weight:600}
+    .score-ng{color:#dc2626;font-weight:600}
+    .grid-head{font-size:.65rem;color:#6b7280}
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-2 sm:p-4">
+  <div id="app" class="max-w-5xl mx-auto">
+
+    <!-- ===== View: OVERVIEW ===== -->
+    <section id="view-overview" class="space-y-4">
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold">Rounds</h1>
+        <button id="btn-new-round" class="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition">New Round</button>
+      </div>
+      <div id="rounds-list" class="grid md:grid-cols-2 gap-3"></div>
+    </section>
+
+    <!-- ===== View: SETUP ===== -->
+    <section id="view-setup" class="hidden">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xl font-bold" id="setup-title">New Round Setup</h2>
+        <div class="space-x-2">
+          <button id="btn-setup-cancel" class="px-3 py-2 border rounded-lg hover:bg-gray-100">Back</button>
+          <button id="btn-setup-save" class="px-4 py-2 bg-emerald-600 text-white rounded-lg shadow hover:bg-emerald-700">Start Tracker</button>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <!-- Basic -->
+        <div class="md:col-span-1 space-y-3 p-4 bg-white rounded-xl shadow">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Date</label>
+            <input type="date" id="setup-date" class="w-full p-2 border rounded-md"/>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Course</label>
+            <input type="text" id="setup-course" class="w-full p-2 border rounded-md" placeholder="e.g. Fuji CC"/>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Start Order</label>
+            <div class="flex gap-2">
+              <button type="button" class="btn-toggle" id="btn-start-out" data-start="OUT">OUT</button>
+              <button type="button" class="btn-toggle" id="btn-start-in" data-start="IN">IN</button>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">OUT: 1→9→10→18 / IN: 10→18→1→9</p>
+          </div>
+          <div class="pt-2 border-t">
+            <div class="text-sm grid grid-cols-2 gap-2">
+              <div>Par Total</div><div class="text-right font-bold" id="setup-par-total">72</div>
+              <div>Target Total</div><div class="text-right font-bold" id="setup-target-total">90</div>
+              <div class="col-span-2 text-xs text-gray-500">Target Total = Σ (Par + TargetAdj)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Par & Target per hole -->
+        <div class="md:col-span-2 p-4 bg-white rounded-xl shadow">
+          <div class="flex items-baseline justify-between mb-2">
+            <h3 class="font-semibold">Holes (Par & Target)</h3>
+            <div class="grid-head">Target: Par / Bogey / D.Bogey</div>
+          </div>
+          <div id="par-input-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== View: TRACKER ===== -->
+    <section id="view-tracker" class="hidden">
+      <div class="flex items-center justify-between mb-3">
+        <div class="space-x-2">
+          <button id="btn-tracker-back" class="px-3 py-2 border rounded-lg hover:bg-gray-100">Back</button>
+          <button id="btn-open-scorecard" class="px-3 py-2 border rounded-lg hover:bg-gray-100">Scorecard</button>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-gray-500">TOTAL</div>
+          <div class="text-3xl font-extrabold" id="round-total">0</div>
+          <!-- 横並びの3メトリクス -->
+          <div class="mt-1 grid grid-cols-3 gap-2 text-xs">
+            <div>
+              <div class="text-gray-500">vs Par</div>
+              <div class="text-lg font-bold" id="round-vspar">E</div>
+            </div>
+            <div>
+              <div class="text-gray-500">vs Target</div>
+              <div class="text-lg font-bold" id="round-vstarget">E</div>
+            </div>
+            <div>
+              <div class="text-gray-500">Total Target</div>
+              <div class="text-lg font-bold" id="round-total-target">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4 bg-white rounded-xl shadow">
+        <div class="flex items-center justify-between">
+          <div class="text-xl font-bold" id="hole-title">Hole 1 (Par 4)</div>
+          <div class="space-x-2 hidden md:block">
+            <button id="btn-prev-hole" class="px-3 py-2 bg-gray-200 rounded-lg">Prev</button>
+            <button id="btn-next-hole" class="px-3 py-2 bg-gray-200 rounded-lg">Next</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4 mt-4">
+        <!-- 0. Target -->
+        <div class="p-3 rounded-lg border">
+          <div class="text-sm font-semibold mb-2">Target</div>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <button type="button" class="btn-toggle" id="tg-par">Par</button>
+            <button type="button" class="btn-toggle" id="tg-bogey">Bogey</button>
+            <button type="button" class="btn-toggle" id="tg-dbogey">D.Bogey</button>
+          </div>
+        </div>
+
+        <!-- 1. Tee -->
+        <div class="p-3 rounded-lg border">
+          <div class="text-sm font-semibold mb-2">Tee Shot</div>
+          <label class="block text-xs text-gray-600 mb-1">Club</label>
+          <select id="tee-club" class="w-full p-2 border rounded-md">
+            <option>1W</option><option>4U</option><option>5i</option><option>6i</option><option>7i</option><option>8i</option><option>9i</option><option>PW</option><option>48°</option><option>52°</option><option>56°</option>
+          </select>
+
+          <div class="grid grid-cols-3 gap-2 mt-3 text-center text-xs font-semibold">
+            <label class="pill tee-res-opt" data-value="Stay Course">Stay</label>
+            <label class="pill tee-res-opt" data-value="Penalty">Penalty</label>
+            <label class="pill tee-res-opt" data-value="OB">OB</label>
+          </div>
+          <div class="grid grid-cols-5 gap-1 mt-2 text-center text-xs">
+            <label class="pill tee-dir-opt" data-value="Straight">Straight</label>
+            <label class="pill tee-dir-opt" data-value="Over">Over</label>
+            <label class="pill tee-dir-opt" data-value="Short">Short</label>
+            <label class="pill tee-dir-opt" data-value="Left">Left</label>
+            <label class="pill tee-dir-opt" data-value="Right">Right</label>
+          </div>
+        </div>
+
+        <!-- 2. Scoring Zone -->
+        <div class="p-3 rounded-lg border">
+          <div class="text-sm font-semibold mb-2">Scoring Zone</div>
+          <!-- To SZ -->
+          <div class="mb-2">
+            <div class="flex items-center justify-between border rounded-md">
+              <button type="button" data-key="strokesToSZ" data-act="-" class="p-3 bg-yellow-100 rounded-l-md text-xl">-</button>
+              <div class="flex-1 text-center p-2">
+                <div class="text-xs text-gray-500">To SZ</div>
+                <div id="disp-to" class="text-2xl font-bold">0</div>
+                <div class="text-xs text-gray-500">(T=<span id="target-to">0</span>)</div>
+                <div class="text-xs mt-1"><span id="ok-to" class="font-bold"></span></div>
+              </div>
+              <button type="button" data-key="strokesToSZ" data-act="+" class="p-3 bg-yellow-100 rounded-r-md text-xl">+</button>
+            </div>
+          </div>
+          <!-- SZ to HO -->
+          <div>
+            <div class="flex items-center justify-between border rounded-md">
+              <button type="button" data-key="strokesFromSZ" data-act="-" class="p-3 bg-yellow-100 rounded-l-md text-xl">-</button>
+              <div class="flex-1 text-center p-2">
+                <div class="text-xs text-gray-500">SZ to HO</div>
+                <div id="disp-from" class="text-2xl font-bold">0</div>
+                <div class="text-xs text-gray-500">(T=<span id="target-from">3</span>)</div>
+                <div class="text-xs mt-1"><span id="ok-from" class="font-bold"></span></div>
+              </div>
+              <button type="button" data-key="strokesFromSZ" data-act="+" class="p-3 bg-yellow-100 rounded-r-md text-xl">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result (override) as +/- -->
+      <div class="mt-4">
+        <div class="p-3 rounded-lg border">
+          <div class="text-sm font-semibold mb-2">Result</div>
+          <div class="flex items-center justify-between border rounded-md">
+            <button type="button" data-key="resultOverride" data-act="-" class="p-3 bg-gray-100 rounded-l-md text-xl">-</button>
+            <div class="flex-1 text-center p-2">
+              <div class="text-xs text-gray-500">Result (override)</div>
+              <div>
+                <div id="disp-result" class="text-2xl font-bold inline-block"></div>
+                <span id="disp-result-label" class="text-sm text-gray-500 ml-1"></span>
+              </div>
+              <div class="text-xs mt-1"><span id="result-warning" class="font-bold"></span></div>
+            </div>
+            <button type="button" data-key="resultOverride" data-act="+" class="p-3 bg-gray-100 rounded-r-md text-xl">+</button>
+          </div>
+          <div class="text-xs text-gray-500 mt-1">If set, scorecard uses this value. Mismatch with (To SZ + SZ to HO) shows a warning.</div>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4 mt-4">
+        <!-- 3. Putts -->
+        <div class="p-3 rounded-lg border">
+          <div class="text-sm font-semibold mb-2">Putts</div>
+          <div class="grid grid-cols-5 gap-2 text-center">
+            <button type="button" class="btn-toggle" data-putts="1">1</button>
+            <button type="button" class="btn-toggle" data-putts="2">2</button>
+            <button type="button" class="btn-toggle" data-putts="3">3</button>
+            <button type="button" class="btn-toggle" data-putts="4">4</button>
+            <button type="button" class="btn-toggle" data-putts="5">5</button>
+          </div>
+          <div class="text-xs mt-2">Target 2 putts: <span id="ok-putts" class="font-bold"></span></div>
+        </div>
+
+        <!-- 4. Other -->
+        <div class="p-3 rounded-lg border md:col-span-2">
+          <div class="text-sm font-semibold mb-2">Other</div>
+          <div class="grid md:grid-cols-4 gap-3">
+            <div class="border rounded-md p-2 text-center">
+              <div class="text-xs text-gray-500">Bunker</div>
+              <div class="flex items-center justify-between">
+                <button type="button" data-key="bunker" data-act="-" class="px-3 py-2 bg-gray-100 rounded">-</button>
+                <div id="other-bunker" class="text-xl font-bold">0</div>
+                <button type="button" data-key="bunker" data-act="+" class="px-3 py-2 bg-gray-100 rounded">+</button>
+              </div>
+            </div>
+            <div class="border rounded-md p-2 text-center">
+              <div class="text-xs text-gray-500">Topped</div>
+              <div class="flex items-center justify-between">
+                <button type="button" data-key="topped" data-act="-" class="px-3 py-2 bg-gray-100 rounded">-</button>
+                <div id="other-topped" class="text-xl font-bold">0</div>
+                <button type="button" data-key="topped" data-act="+" class="px-3 py-2 bg-gray-100 rounded">+</button>
+              </div>
+            </div>
+            <div class="border rounded-md p-2 text-center">
+              <div class="text-xs text-gray-500">Heavy Duff</div>
+              <div class="flex items-center justify-between">
+                <button type="button" data-key="heavyDuff" data-act="-" class="px-3 py-2 bg-gray-100 rounded">-</button>
+                <div id="other-heavyDuff" class="text-xl font-bold">0</div>
+                <button type="button" data-key="heavyDuff" data-act="+" class="px-3 py-2 bg-gray-100 rounded">+</button>
+              </div>
+            </div>
+            <div class="border rounded-md p-2 text-center">
+              <div class="text-xs text-gray-500">Shank</div>
+              <div class="flex items-center justify-between">
+                <button type="button" data-key="shank" data-act="-" class="px-3 py-2 bg-gray-100 rounded">-</button>
+                <div id="other-shank" class="text-xl font-bold">0</div>
+                <button type="button" data-key="shank" data-act="+" class="px-3 py-2 bg-gray-100 rounded">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===== View: SCORECARD ===== -->
+    <section id="view-scorecard" class="hidden">
+      <div class="flex items-center justify-between mb-3">
+        <button id="btn-scorecard-back" class="px-3 py-2 border rounded-lg hover:bg-gray-100">Back</button>
+        <div class="text-right">
+          <div class="text-xs grid-head">In Progress</div>
+          <div id="sc-summary" class="text-sm"></div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow overflow-x-auto">
+        <table class="min-w-full text-sm text-right">
+          <thead class="bg-gray-50 text-gray-600 text-right">
+            <tr>
+              <th class="p-2 text-right">H</th>
+              <th class="p-2 text-right">Par</th>
+              <th class="p-2 text-right">Target (±Par)</th>
+              <th class="p-2 text-right">To SZ</th>
+              <th class="p-2 text-right">SZ to HO</th>
+              <th class="p-2 text-right">Putts</th>
+              <th class="p-2 text-right">Gross</th>
+              <th class="p-2 text-right">vs Target</th>
+              <th class="p-2 text-right">vs Par</th>
+            </tr>
+          </thead>
+          <tbody id="sc-tbody" class="divide-y"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    /* ========== State & Storage ========== */
+    const DEFAULT_HOLES = 18, MIN_PAR=3, MAX_PAR=5;
+    const idxKey='gr_ids_v2'; const keyFor=(id)=>`gr_${id}_v2`;
+    const storage={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},remove:(k)=>{try{localStorage.removeItem(k)}catch(e){}}};
+    const jparse=(s,f)=>{try{return JSON.parse(s)}catch(_){return f}};
+    const pm=(v)=> v===0? 'E' : (v>0? `+${v}` : `${v}`);
+
+    const state={
+      view:'overview', roundId:null, holeIdx:1,
+      round:null, rounds:[],
+      parSetup:Array(DEFAULT_HOLES).fill(4),
+      startOrder:'OUT',
+      editingId:null, // null=new, string=edit
+      setupTargets: Array(DEFAULT_HOLES).fill('Bogey') // ★ 新規作成時のターゲット保持
+    };
+
+    const playOrderFor=(start)=> start==='IN'
+      ? Array.from({length:9},(_,i)=>10+i).concat(Array.from({length:9},(_,i)=>1+i))
+      : Array.from({length:9},(_,i)=>1+i).concat(Array.from({length:9},(_,i)=>10+i));
+
+    function createRound(id,date,course,parArr,start,targets){
+      const holes=[];
+      for(let i=1;i<=DEFAULT_HOLES;i++){
+        holes.push({
+          hole:i, par:parseInt(parArr[i-1]||4,10),
+          teeClub:'1W', teeResult:'Stay Course', teeDirection:'Straight',
+          strokesToSZ:0, strokesFromSZ:0, putts:0,
+          resultOverride:null,
+          targetGoal: (targets && targets[i-1]) || 'Bogey',
+          bunker:0,topped:0,heavyDuff:0,shank:0
+        });
+      }
+      return {
+        roundId:id, date:date||new Date().toISOString().slice(0,10),
+        courseName:course||'New Course', createdAt:new Date().toISOString(),
+        holes, playStart:start||'OUT', playOrder:playOrderFor(start||'OUT')
+      };
+    }
+
+    function save(){
+      if(!state.round) return;
+      storage.set(keyFor(state.roundId), JSON.stringify(state.round));
+      const ids=new Set(jparse(storage.get(idxKey)||'[]',[]));
+      ids.add(state.roundId);
+      storage.set(idxKey, JSON.stringify([...ids]));
+    }
+
+    function loadRounds(){
+      const ids=jparse(storage.get(idxKey)||'[]',[]);
+      state.rounds = ids.map(id=>jparse(storage.get(keyFor(id))||'null',null))
+        .filter(Boolean)
+        .sort((a,b)=> new Date(b.date)-new Date(a.date));
+      renderOverview();
+    }
+
+    function openRound(id){
+      const raw=storage.get(keyFor(id));
+      if(!raw){ switchView('overview'); return;}
+      state.roundId=id; state.round=jparse(raw,null);
+      if(!state.round.playOrder) state.round.playOrder=playOrderFor(state.round.playStart||'OUT');
+      state.holeIdx=1;
+      renderTracker(); switchView('tracker');
+    }
+
+    function editRound(id){
+      const raw=storage.get(keyFor(id));
+      if(!raw){ return; }
+      const r=jparse(raw,null);
+      state.editingId = id;
+      state.roundId = id;
+      state.round = r;
+      state.parSetup = r.holes.map(h=>h.par);
+      state.startOrder = r.playStart || 'OUT';
+      state.setupTargets = r.holes.map(h=>h.targetGoal || 'Bogey');
+
+      document.getElementById('setup-title').textContent = 'Edit Round';
+      document.getElementById('btn-setup-save').textContent = 'Update';
+      document.getElementById('setup-date').value = r.date || new Date().toISOString().slice(0,10);
+      document.getElementById('setup-course').value = r.courseName || '';
+      renderSetup();
+      switchView('setup');
+    }
+
+    function switchView(v){
+      ['overview','setup','tracker','scorecard'].forEach(x=>{
+        document.getElementById(`view-${x}`).classList.add('hidden');
+      });
+      state.view=v;
+      document.getElementById(`view-${v}`).classList.remove('hidden');
+    }
+
+    /* ========== Overview ========== */
+    function renderOverview(){
+      const list=document.getElementById('rounds-list');
+      if(state.rounds.length===0){
+        list.innerHTML='<div class="p-6 bg-white rounded-xl shadow text-center text-gray-500">No rounds yet. Click "New Round".</div>';
+        return;
+      }
+      list.innerHTML = state.rounds.map(r=>{
+        const played=r.playOrder.filter(n=>{
+          const h=r.holes[n-1];
+          return (h.strokesToSZ||0)+(h.strokesFromSZ||0)+(h.putts||0)>0 || Number.isInteger(h.resultOverride);
+        });
+        const total=played.reduce((s,n)=>{
+          const h=r.holes[n-1];
+          const auto=(h.strokesToSZ||0)+(h.strokesFromSZ||0);
+          const gross = Number.isInteger(h.resultOverride)? h.resultOverride : auto;
+          return s + gross;
+        },0);
+        const par=played.reduce((s,n)=> s+r.holes[n-1].par,0);
+        const vs=total-par;
+        return `
+          <div class="p-4 bg-white rounded-xl shadow flex items-center justify-between">
+            <div>
+              <div class="font-semibold">${r.courseName||'New Course'}</div>
+              <div class="text-xs text-gray-500">${r.date} · Played ${played.length}/${DEFAULT_HOLES}</div>
+            </div>
+            <div class="text-right space-y-1">
+              <div class="text-xs text-gray-500">TOTAL</div>
+              <div class="text-xl font-bold">${total}</div>
+              <div class="text-xs text-gray-500">vs Par</div>
+              <div class="font-semibold">${pm(vs)}</div>
+              <div class="mt-2 flex gap-2 justify-end">
+                <button data-open="${r.roundId}" class="px-3 py-1.5 border rounded-lg hover:bg-gray-50">Open</button>
+                <button data-edit="${r.roundId}" class="px-3 py-1.5 border rounded-lg hover:bg-gray-50">Edit</button>
+                <button data-del="${r.roundId}" class="px-3 py-1.5 border rounded-lg text-red-600 hover:bg-red-50">Delete</button>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+      list.querySelectorAll('[data-open]').forEach(b=> b.addEventListener('click',()=> openRound(b.dataset.open)));
+      list.querySelectorAll('[data-edit]').forEach(b=> b.addEventListener('click',()=> editRound(b.dataset.edit)));
+      list.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click',()=>{
+        const id=b.dataset.del;
+        storage.remove(keyFor(id));
+        const ids=jparse(storage.get(idxKey)||'[]',[]).filter(x=>x!==id);
+        storage.set(idxKey, JSON.stringify(ids));
+        loadRounds();
+      }));
+    }
+
+    /* ========== Setup ========== */
+    function openSetup(){
+      state.round=null; state.roundId=null; state.editingId=null;
+      state.parSetup=Array(DEFAULT_HOLES).fill(4); state.startOrder='OUT';
+      state.setupTargets=Array(DEFAULT_HOLES).fill('Bogey');
+      document.getElementById('setup-title').textContent='New Round Setup';
+      document.getElementById('btn-setup-save').textContent='Start Tracker';
+      document.getElementById('setup-date').value=new Date().toISOString().slice(0,10);
+      document.getElementById('setup-course').value='';
+      renderSetup(); switchView('setup');
+    }
+
+    function renderSetup(){
+      document.getElementById('btn-start-out').classList.toggle('on', state.startOrder==='OUT');
+      document.getElementById('btn-start-in').classList.toggle('on', state.startOrder==='IN');
+
+      const grid=document.getElementById('par-input-grid');
+      let html=''; let parTotal=0;
+
+      for(let i=1;i<=DEFAULT_HOLES;i++){
+        const par=state.parSetup[i-1]; parTotal+=par;
+        const curTarget = state.setupTargets[i-1] || 'Bogey';
+
+        html+=`
+          <div class="flex items-center justify-between p-2 border rounded-lg mb-2">
+            <div class="w-16 text-sm">H${i}</div>
+            <div class="flex items-center gap-2">
+              <button type="button" data-hole="${i}" data-act="-" class="px-2 py-1 bg-gray-100 rounded">-</button>
+              <div class="w-8 text-center font-bold">${par}</div>
+              <button type="button" data-hole="${i}" data-act="+" class="px-2 py-1 bg-gray-100 rounded">+</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" class="btn-toggle ${curTarget==='Par'?'on':''}" data-target="Par" data-hole="${i}">Par</button>
+              <button type="button" class="btn-toggle ${curTarget==='Bogey'?'on':''}" data-target="Bogey" data-hole="${i}">Bogey</button>
+              <button type="button" class="btn-toggle ${curTarget==='DoubleBogey'?'on':''}" data-target="DoubleBogey" data-hole="${i}">D.Bogey</button>
+            </div>
+          </div>`;
+      }
+      grid.innerHTML=html;
+
+      // Target total = Σ(par + adj) where adj: Par=0, Bogey=+1, D.Bogey=+2
+      const targetTotal = state.parSetup.reduce((s,p,idx)=>{
+        const t = state.setupTargets[idx] || 'Bogey';
+        const adj = (t==='Par'?0:(t==='Bogey'?1:2));
+        return s + p + adj;
+      }, 0);
+
+      document.getElementById('setup-par-total').textContent = parTotal;
+      document.getElementById('setup-target-total').textContent = targetTotal;
+
+      grid.querySelectorAll('[data-hole][data-act]').forEach(b=> b.addEventListener('click', ()=>{
+        const i=parseInt(b.dataset.hole,10)-1;
+        const act=b.dataset.act;
+        let v=state.parSetup[i];
+        v = act==='+'? Math.min(MAX_PAR,v+1): Math.max(MIN_PAR,v-1);
+        state.parSetup[i]=v; renderSetup();
+      }));
+      grid.querySelectorAll('[data-target]').forEach(b=> b.addEventListener('click', ()=>{
+        const i=parseInt(b.dataset.hole,10)-1;
+        state.setupTargets[i] = b.dataset.target;         // ★ ここで保持
+        // 見た目のトグル
+        const group=b.parentElement.querySelectorAll('[data-target]');
+        group.forEach(x=>x.classList.remove('on'));
+        b.classList.add('on');
+        // 即時再計算して表示更新
+        renderSetup();
+      }));
+    }
+
+    function startOrUpdateRound(){
+      const date=document.getElementById('setup-date').value;
+      const course=document.getElementById('setup-course').value||'New Course';
+
+      if(state.editingId && state.round){
+        const r=state.round;
+        r.date = date; r.courseName = course;
+        r.playStart = state.startOrder;
+        r.playOrder = playOrderFor(state.startOrder);
+        r.holes.forEach((h,idx)=>{ 
+          h.par = state.parSetup[idx]; 
+          h.targetGoal = state.setupTargets[idx] || 'Bogey';
+        });
+        save(); loadRounds(); openRound(state.editingId);
+        return;
+      }
+
+      const id=Date.now().toString();
+      const r=createRound(id,date,course,state.parSetup,state.startOrder,state.setupTargets);
+      state.round=r; state.roundId=id; save(); openRound(id);
+    }
+
+    /* ========== Tracker Helpers ========== */
+    const curHole = ()=> state.round.holes[state.round.playOrder[state.holeIdx-1]-1];
+
+    // 画像表のロジック:
+    // - targetScore = par + adj(Par=0,Bogey=+1,DBogey=+2)
+    // - targetFrom = (par===3 && targetScore===3) ? 2 : 3
+    // - targetTo   = max(0, targetScore - targetFrom)
+    function calcTargetsFor(h){
+      const adj = (h.targetGoal==='Bogey'?1:(h.targetGoal==='DoubleBogey'?2:0));
+      const targetScore = h.par + adj;
+      const targetFrom  = (h.par===3 && targetScore===3) ? 2 : 3;
+      const targetTo    = Math.max(0, targetScore - targetFrom);
+      return {targetScore, targetFrom, targetTo};
+    }
+
+    /* ========== Tracker ========== */
+    function renderTracker(){
+      const r=state.round; if(!r) return; const h=curHole();
+      const holeNo=r.playOrder[state.holeIdx-1];
+
+      const {targetScore, targetFrom, targetTo} = calcTargetsFor(h);
+
+      const played=r.playOrder.filter(n=>{
+        const x=r.holes[n-1];
+        return (x.strokesToSZ||0)+(x.strokesFromSZ||0)+(x.putts||0)>0 || Number.isInteger(x.resultOverride);
+      });
+
+      const total=played.reduce((s,n)=>{
+        const x=r.holes[n-1];
+        const auto=(x.strokesToSZ||0)+(x.strokesFromSZ||0);
+        const gross = Number.isInteger(x.resultOverride)? x.resultOverride : auto;
+        return s+gross;
+      },0);
+      const par=played.reduce((s,n)=> s + r.holes[n-1].par, 0);
+      const targetPlayed=played.reduce((s,n)=>{
+        const x=r.holes[n-1];
+        const {targetScore} = calcTargetsFor(x);
+        return s + targetScore;
+      },0);
+
+      const totalTargetAll = r.holes.reduce((s,x)=> s + calcTargetsFor(x).targetScore, 0);
+
+      document.getElementById('round-total').textContent = total;
+      document.getElementById('round-vspar').textContent = pm(total-par);
+      document.getElementById('round-vstarget').textContent = pm(total-targetPlayed);
+      document.getElementById('round-total-target').textContent = totalTargetAll;
+
+      document.getElementById('hole-title').textContent = `Hole ${holeNo} (Par ${h.par})`;
+      document.getElementById('btn-prev-hole').disabled = state.holeIdx===1;
+      document.getElementById('btn-next-hole').disabled = state.holeIdx===DEFAULT_HOLES;
+
+      document.getElementById('tee-club').value=h.teeClub;
+      document.querySelectorAll('.tee-res-opt').forEach(l=>{
+        const on = l.dataset.value===h.teeResult;
+        l.classList.toggle('on', on);
+        l.classList.remove('bg-green-500','text-white','border-green-500','bg-yellow-500','border-yellow-500','bg-red-500','border-red-500');
+        if(on){
+          if(l.dataset.value==='Stay Course'){ l.classList.add('bg-green-500','text-white','border-green-500'); }
+          else if(l.dataset.value==='Penalty'){ l.classList.add('bg-yellow-500','text-white','border-yellow-500'); }
+          else if(l.dataset.value==='OB'){ l.classList.add('bg-red-500','text-white','border-red-500'); }
+        }
+      });
+      document.querySelectorAll('.tee-dir-opt').forEach(l=>{
+        const on = l.dataset.value===h.teeDirection;
+        l.classList.toggle('on', on);
+        l.classList.remove('bg-indigo-500','text-white','border-indigo-500');
+        if(on){ l.classList.add('bg-indigo-500','text-white','border-indigo-500'); }
+      });
+
+      document.getElementById('disp-to').textContent = h.strokesToSZ||0;
+      document.getElementById('disp-from').textContent = h.strokesFromSZ||0;
+      document.getElementById('target-to').textContent = targetTo;
+      document.getElementById('target-from').textContent = targetFrom;
+      document.getElementById('ok-to').textContent = (h.strokesToSZ||0) <= targetTo ? '✅' : '❌';
+      document.getElementById('ok-from').textContent = (h.strokesFromSZ||0) <= targetFrom ? '✅' : '❌';
+
+      // Result override with label & warning
+      const grossAuto = (h.strokesToSZ||0)+(h.strokesFromSZ||0);
+      const warnEl = document.getElementById('result-warning');
+      const dispRes = document.getElementById('disp-result');
+      const dispResLabel = document.getElementById('disp-result-label');
+      if(Number.isInteger(h.resultOverride)){
+        dispRes.textContent = h.resultOverride;
+        const diff = h.resultOverride - h.par;
+        let label = 'Par';
+        if(diff === 1) label = 'Bogey';
+        else if(diff === 2) label = 'D.Bogey';
+        else if(diff >= 3) label = `+${diff}`;
+        else if(diff === -1) label = 'Birdie';
+        else if(diff === -2) label = 'Eagle';
+        else if(diff === -3) label = 'Albatross';
+        else if(diff <= -4) label = `${diff}`;
+        dispResLabel.textContent = `(${label})`;
+      } else {
+        dispRes.textContent = '';
+        if(dispResLabel) dispResLabel.textContent = '';
+      }
+      if(Number.isInteger(h.resultOverride) && h.resultOverride!==grossAuto){
+        warnEl.textContent = `⚠️ Mismatch: ToSZ+SZ to HO = ${grossAuto}, Result = ${h.resultOverride}`;
+        warnEl.className = 'text-sm text-red-600 font-semibold';
+      } else {
+        warnEl.textContent = '';
+        warnEl.className = 'text-sm text-green-600';
+      }
+
+      document.querySelectorAll('[data-putts]').forEach(b=> b.classList.toggle('on', parseInt(b.dataset.putts,10)===(h.putts||0)));
+      document.getElementById('ok-putts').textContent = (h.putts||0) <= 2 ? '✅' : '❌';
+
+      document.getElementById('other-bunker').textContent=h.bunker||0;
+      document.getElementById('other-topped').textContent=h.topped||0;
+      document.getElementById('other-heavyDuff').textContent=h.heavyDuff||0;
+      document.getElementById('other-shank').textContent=h.shank||0;
+
+      // Target toggles
+      document.getElementById('tg-par').classList.toggle('on', h.targetGoal==='Par');
+      document.getElementById('tg-bogey').classList.toggle('on', h.targetGoal==='Bogey');
+      document.getElementById('tg-dbogey').classList.toggle('on', h.targetGoal==='DoubleBogey');
+    }
+
+    function updateHole(key, val){ const h=curHole(); h[key]=val; save(); renderTracker(); }
+
+    // 「最初の＋」でターゲット値を設定するインクリメント
+    function inc(key, delta){
+      const h = curHole();
+      const {targetScore, targetFrom, targetTo} = calcTargetsFor(h);
+
+      const base = (h[key]==null ? 0 : h[key]);
+      let v;
+      if (delta > 0 && (h[key]==null || h[key]===0)) {
+        if (key === 'resultOverride')      v = targetScore;
+        else if (key === 'strokesToSZ')    v = targetTo;
+        else if (key === 'strokesFromSZ')  v = targetFrom;
+        else                               v = 1;
+      } else {
+        v = Math.max(0, (base||0) + delta);
+      }
+      h[key] = v;
+      save(); renderTracker();
+    }
+
+    function moveHole(d){ const n=state.holeIdx + d; if(n<1||n>DEFAULT_HOLES) return; state.holeIdx=n; renderTracker(); }
+
+    /* ========== Scorecard ========== */
+    function openScorecard(){ renderScorecard(); switchView('scorecard'); }
+
+    function renderScorecard(){
+      const r=state.round; if(!r) return;
+      const played=r.playOrder.filter(n=>{
+        const h=r.holes[n-1];
+        return (h.strokesToSZ||0)+(h.strokesFromSZ||0)+(h.putts||0)>0 || Number.isInteger(h.resultOverride);
+      });
+      const total=played.reduce((s,n)=>{
+        const h=r.holes[n-1];
+        const auto=(h.strokesToSZ||0)+(h.strokesFromSZ||0);
+        const gross = Number.isInteger(h.resultOverride)? h.resultOverride : auto;
+        return s+gross;
+      },0);
+      const par=played.reduce((s,n)=> s+r.holes[n-1].par,0);
+      const target=played.reduce((s,n)=>{
+        const h=r.holes[n-1]; 
+        const {targetScore} = calcTargetsFor(h);
+        return s + targetScore;
+      },0);
+      const putts=played.reduce((s,n)=> s+(r.holes[n-1].putts||0),0);
+      const totalTargetAll = r.holes.reduce((s,x)=> s + calcTargetsFor(x).targetScore, 0);
+
+      document.getElementById('sc-summary').innerHTML =
+        `<div class="grid grid-cols-6 gap-2 text-right">
+          <div><div class='grid-head'>Total</div><div class='font-bold'>${total}</div></div>
+          <div><div class='grid-head'>vs Par</div><div class='font-bold'>${pm(total-par)}</div></div>
+          <div><div class='grid-head'>vs Target</div><div class='font-bold'>${pm(total-target)}</div></div>
+          <div><div class='grid-head'>Total Target</div><div class='font-bold'>${totalTargetAll}</div></div>
+          <div><div class='grid-head'>Putts</div><div class='font-bold'>${putts}</div></div>
+          <div><div class='grid-head'>Played</div><div class='font-bold'>${played.length}/${DEFAULT_HOLES}</div></div>
+        </div>`;
+
+      const tbody=document.getElementById('sc-tbody');
+      tbody.innerHTML = r.playOrder.map(no=>{
+        const h=r.holes[no-1];
+        const {targetScore, targetFrom, targetTo} = calcTargetsFor(h);
+        const grossAuto=(h.strokesToSZ||0)+(h.strokesFromSZ||0);
+        const gross = Number.isInteger(h.resultOverride)? h.resultOverride : grossAuto;
+        const mismatch = Number.isInteger(h.resultOverride) && h.resultOverride!==grossAuto;
+        const okTo=(h.strokesToSZ||0) <= targetTo;
+        const okFrom=(h.strokesFromSZ||0) <= targetFrom;
+        const okP=(h.putts||0) <= 2;
+
+        return `<tr class="hover:bg-gray-50 ${gross===0?'opacity-50':''}" data-goto="${no}">
+          <td class="p-2">${no}</td>
+          <td class="p-2">${h.par}</td>
+          <td class="p-2">${pm(targetScore-h.par)}</td>
+          <td class="p-2 ${okTo?'score-ok':'score-ng'}">${h.strokesToSZ||0} <span class="text-gray-400 text-xs">(T=${targetTo})</span> ${okTo?'✅':'❌'}</td>
+          <td class="p-2 ${okFrom?'score-ok':'score-ng'}">${h.strokesFromSZ||0} ${okFrom?'✅':'❌'}</td>
+          <td class="p-2 ${okP?'score-ok':'score-ng'}">${h.putts||0} ${okP?'✅':'❌'}</td>
+          <td class="p-2 font-semibold">${gross||''} ${mismatch?'⚠️':''}</td>
+          <td class="p-2">${pm(gross-targetScore)}</td>
+          <td class="p-2">${pm(gross-h.par)}</td>
+        </tr>`;
+      }).join('');
+
+      document.querySelectorAll('#sc-tbody [data-goto]').forEach(tr=>{
+        tr.addEventListener('click', ()=>{
+          const no=parseInt(tr.getAttribute('data-goto'),10);
+          const idx = state.round.playOrder.indexOf(no);
+          if(idx>=0){ state.holeIdx = idx+1; switchView('tracker'); renderTracker(); }
+        });
+      });
+    }
+
+    /* ========== Events ========== */
+    function bindEvents(){
+      // Overview
+      document.getElementById('btn-new-round').addEventListener('click', openSetup);
+
+      // Setup
+      document.getElementById('btn-setup-cancel').addEventListener('click', ()=> switchView('overview'));
+      document.getElementById('btn-setup-save').addEventListener('click', startOrUpdateRound);
+      document.getElementById('btn-start-out').addEventListener('click', ()=>{ state.startOrder='OUT'; renderSetup(); });
+      document.getElementById('btn-start-in').addEventListener('click', ()=>{ state.startOrder='IN'; renderSetup(); });
+
+      // Tracker
+      document.getElementById('btn-tracker-back').addEventListener('click', ()=> switchView('overview'));
+      document.getElementById('btn-open-scorecard').addEventListener('click', openScorecard);
+      document.getElementById('btn-prev-hole').addEventListener('click', ()=> moveHole(-1));
+      document.getElementById('btn-next-hole').addEventListener('click', ()=> moveHole(1));
+
+      document.getElementById('tee-club').addEventListener('change', (e)=> updateHole('teeClub', e.target.value));
+      document.querySelectorAll('.tee-res-opt').forEach(l=> l.addEventListener('click', ()=> updateHole('teeResult', l.dataset.value)));
+      document.querySelectorAll('.tee-dir-opt').forEach(l=> l.addEventListener('click', ()=> updateHole('teeDirection', l.dataset.value)));
+
+      // +/- counters (To SZ, SZ to HO, Result override, Other)
+      document.querySelectorAll('[data-key][data-act]').forEach(b=> b.addEventListener('click', ()=> inc(b.dataset.key, b.dataset.act==='+'?1:-1)));
+
+      // Putts (1-5)
+      document.querySelectorAll('[data-putts]').forEach(b=> b.addEventListener('click', ()=> updateHole('putts', parseInt(b.dataset.putts,10))));
+
+      // Target toggle (Par/Bogey/D.Bogey)
+      document.getElementById('tg-par').addEventListener('click', ()=> updateHole('targetGoal','Par'));
+      document.getElementById('tg-bogey').addEventListener('click', ()=> updateHole('targetGoal','Bogey'));
+      document.getElementById('tg-dbogey').addEventListener('click', ()=> updateHole('targetGoal','DoubleBogey'));
+
+      // Scorecard back
+      document.getElementById('btn-scorecard-back').addEventListener('click', ()=> switchView('tracker'));
+    }
+
+    /* ========== Init ========== */
+    (function init(){
+      bindEvents();
+      loadRounds();
+    })();
+  </script>
+</body>
+</html>
