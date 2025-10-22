@@ -15,29 +15,22 @@
     .score-ok{color:#059669;font-weight:600}
     .score-ng{color:#dc2626;font-weight:600}
     .grid-head{font-size:.65rem;color:#6b7280}
-
-    /* ==== 強制ビュー制御 ==== */
-    .view{display:none !important;}
-    .view.active{display:block !important;}
-    #view-setup:not(.active),
-    #view-tracker:not(.active),
-    #view-scorecard:not(.active){display:none !important;}
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen p-2 sm:p-4">
   <div id="app" class="max-w-5xl mx-auto">
 
     <!-- ===== View: OVERVIEW ===== -->
-    <section id="view-overview" class="view active">
+    <section id="view-overview" class="space-y-4">
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold">Rounds</h1>
         <button id="btn-new-round" class="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition">New Round</button>
       </div>
-      <div id="rounds-list" class="grid md:grid-cols-2 gap-3 mt-4"></div>
+      <div id="rounds-list" class="grid md:grid-cols-2 gap-3"></div>
     </section>
 
     <!-- ===== View: SETUP ===== -->
-    <section id="view-setup" class="view">
+    <section id="view-setup" class="hidden">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-xl font-bold" id="setup-title">New Round Setup</h2>
         <div class="space-x-2">
@@ -86,7 +79,7 @@
     </section>
 
     <!-- ===== View: TRACKER ===== -->
-    <section id="view-tracker" class="view">
+    <section id="view-tracker" class="hidden">
       <div class="flex items-center justify-between mb-3">
         <div class="space-x-2">
           <button id="btn-tracker-back" class="px-3 py-2 border rounded-lg hover:bg-gray-100">Back</button>
@@ -116,7 +109,8 @@
       <div class="p-4 bg-white rounded-xl shadow">
         <div class="flex items-center justify-between">
           <div class="text-xl font-bold" id="hole-title">Hole 1 (Par 4)</div>
-          <div class="space-x-2 hidden md:block">
+          <!-- FIX: iPhoneでも常時表示（hidden md:block を削除） -->
+          <div class="space-x-2">
             <button id="btn-prev-hole" class="px-3 py-2 bg-gray-200 rounded-lg">Prev</button>
             <button id="btn-next-hole" class="px-3 py-2 bg-gray-200 rounded-lg">Next</button>
           </div>
@@ -265,12 +259,9 @@
     </section>
 
     <!-- ===== View: SCORECARD ===== -->
-    <section id="view-scorecard" class="view">
+    <section id="view-scorecard" class="hidden">
       <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center gap-2">
-          <button id="btn-scorecard-back" class="px-3 py-2 border rounded-lg hover:bg-gray-100">Back</button>
-          <button id="btn-export-round" class="px-3 py-2 border rounded-lg hover:bg-gray-100">Export CSV (This Round)</button>
-        </div>
+        <button id="btn-scorecard-back" class="px-3 py-2 border rounded-lg hover:bg-gray-100">Back</button>
         <div class="text-right">
           <div class="text-xs grid-head">In Progress</div>
           <div id="sc-summary" class="text-sm"></div>
@@ -311,8 +302,8 @@
       round:null, rounds:[],
       parSetup:Array(DEFAULT_HOLES).fill(4),
       startOrder:'OUT',
-      editingId:null,
-      setupTargets: Array(DEFAULT_HOLES).fill('Bogey')
+      editingId:null, // null=new, string=edit
+      setupTargets: Array(DEFAULT_HOLES).fill('Bogey') // ★ 新規作成時のターゲット保持
     };
 
     const playOrderFor=(start)=> start==='IN'
@@ -384,13 +375,10 @@
 
     function switchView(v){
       ['overview','setup','tracker','scorecard'].forEach(x=>{
-        const el = document.getElementById(`view-${x}`);
-        if(!el) return;
-        el.classList.remove('active');
+        document.getElementById(`view-${x}`).classList.add('hidden');
       });
-      const tgt=document.getElementById(`view-${v}`);
-      if(tgt){ tgt.classList.add('active'); }
       state.view=v;
+      document.getElementById(`view-${v}`).classList.remove('hidden');
     }
 
     /* ========== Overview ========== */
@@ -436,7 +424,6 @@
 
       list.querySelectorAll('[data-open]').forEach(b=> b.addEventListener('click',()=> openRound(b.dataset.open)));
       list.querySelectorAll('[data-edit]').forEach(b=> b.addEventListener('click',()=> editRound(b.dataset.edit)));
-      list.querySelectorAll('[data-export]').forEach(b=> b.addEventListener('click',()=> exportRoundById(b.dataset.export)));
       list.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click',()=>{
         const id=b.dataset.del;
         storage.remove(keyFor(id));
@@ -444,6 +431,7 @@
         storage.set(idxKey, JSON.stringify(ids));
         loadRounds();
       }));
+      list.querySelectorAll('[data-export]').forEach(b=> b.addEventListener('click',()=> exportRoundCSV(b.dataset.export)));
     }
 
     /* ========== Setup ========== */
@@ -486,6 +474,7 @@
       }
       grid.innerHTML=html;
 
+      // Target total = Σ(par + adj) where adj: Par=0, Bogey=+1, D.Bogey=+2
       const targetTotal = state.parSetup.reduce((s,p,idx)=>{
         const t = state.setupTargets[idx] || 'Bogey';
         const adj = (t==='Par'?0:(t==='Bogey'?1:2));
@@ -504,10 +493,12 @@
       }));
       grid.querySelectorAll('[data-target]').forEach(b=> b.addEventListener('click', ()=>{
         const i=parseInt(b.dataset.hole,10)-1;
-        state.setupTargets[i] = b.dataset.target;
+        state.setupTargets[i] = b.dataset.target;         // ★ ここで保持
+        // 見た目のトグル
         const group=b.parentElement.querySelectorAll('[data-target]');
         group.forEach(x=>x.classList.remove('on'));
         b.classList.add('on');
+        // 即時再計算して表示更新
         renderSetup();
       }));
     }
@@ -537,6 +528,10 @@
     /* ========== Tracker Helpers ========== */
     const curHole = ()=> state.round.holes[state.round.playOrder[state.holeIdx-1]-1];
 
+    // 画像表のロジック:
+    // - targetScore = par + adj(Par=0,Bogey=+1,DBogey=+2)
+    // - targetFrom = (par===3 && targetScore===3) ? 2 : 3
+    // - targetTo   = max(0, targetScore - targetFrom)
     function calcTargetsFor(h){
       const adj = (h.targetGoal==='Bogey'?1:(h.targetGoal==='DoubleBogey'?2:0));
       const targetScore = h.par + adj;
@@ -606,6 +601,7 @@
       document.getElementById('ok-to').textContent = (h.strokesToSZ||0) <= targetTo ? '✅' : '❌';
       document.getElementById('ok-from').textContent = (h.strokesFromSZ||0) <= targetFrom ? '✅' : '❌';
 
+      // Result override with label & warning
       const grossAuto = (h.strokesToSZ||0)+(h.strokesFromSZ||0);
       const warnEl = document.getElementById('result-warning');
       const dispRes = document.getElementById('disp-result');
@@ -642,6 +638,7 @@
       document.getElementById('other-heavyDuff').textContent=h.heavyDuff||0;
       document.getElementById('other-shank').textContent=h.shank||0;
 
+      // Target toggles
       document.getElementById('tg-par').classList.toggle('on', h.targetGoal==='Par');
       document.getElementById('tg-bogey').classList.toggle('on', h.targetGoal==='Bogey');
       document.getElementById('tg-dbogey').classList.toggle('on', h.targetGoal==='DoubleBogey');
@@ -649,6 +646,7 @@
 
     function updateHole(key, val){ const h=curHole(); h[key]=val; save(); renderTracker(); }
 
+    // 「最初の＋」でターゲット値を設定するインクリメント
     function inc(key, delta){
       const h = curHole();
       const {targetScore, targetFrom, targetTo} = calcTargetsFor(h);
@@ -736,116 +734,85 @@
       });
     }
 
-    /* ===== CSV Export Helpers ===== */
-    function csvEscape(val){
-      if(val==null) return '';
-      const s=String(val);
-      if(/[",\n]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
-      return s;
-    }
-    function downloadCSV(filename, rows){
-      const csv = rows.map(r=> r.map(csvEscape).join(',')).join('\n');
-      const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href=url; a.download=filename; document.body.appendChild(a); a.click();
-      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
-    }
-    function buildCSVRowsFromRound(r){
-      const header=[
-        'RoundID','Date','Course','StartOrder','Hole','Par','TargetGoal','TargetScore',
+    /* ========== CSV Export (per round) ========== */
+    function exportRoundCSV(id){
+      const raw = storage.get(keyFor(id));
+      if(!raw){ alert('Round not found.'); return; }
+      const r = jparse(raw,null); if(!r){ alert('Invalid round data.'); return; }
+
+      // CSV header
+      const rows = [[
+        'Hole','Par','Target','ToSZ','SZtoHO','Putts','Gross',
         'TeeClub','TeeResult','TeeDirection',
-        'ToSZ','SZtoHO','Putts','ResultOverride','GrossUsed','vsPar','vsTarget',
-        'Bunker','Topped','HeavyDuff','Shank'
-      ];
-      const rows=[header];
-      const playOrder = r.playOrder && r.playOrder.length? r.playOrder : playOrderFor(r.playStart||'OUT');
-      playOrder.forEach(no=>{
-        const h=r.holes[no-1];
-        const {targetScore} = calcTargetsFor(h);
+        'Bunker','Topped','HeavyDuff','Shank',
+        'vsTarget','vsPar'
+      ]];
+
+      r.playOrder.forEach(no=>{
+        const h = r.holes[no-1];
+        const {targetScore,targetFrom,targetTo}=calcTargetsFor(h);
         const grossAuto=(h.strokesToSZ||0)+(h.strokesFromSZ||0);
         const gross = Number.isInteger(h.resultOverride)? h.resultOverride : grossAuto;
+
         rows.push([
-          r.roundId, r.date, r.courseName, r.playStart||'OUT',
-          no, h.par, h.targetGoal, targetScore,
-          h.teeClub||'', h.teeResult||'', h.teeDirection||'',
-          h.strokesToSZ||0, h.strokesFromSZ||0, h.putts||0,
-          Number.isInteger(h.resultOverride)? h.resultOverride : '',
-          gross, gross - h.par, gross - targetScore,
-          h.bunker||0, h.topped||0, h.heavyDuff||0, h.shank||0
+          no, h.par, targetScore, (h.strokesToSZ||0), (h.strokesFromSZ||0), (h.putts||0), gross,
+          h.teeClub, h.teeResult, h.teeDirection,
+          (h.bunker||0),(h.topped||0),(h.heavyDuff||0),(h.shank||0),
+          (gross-targetScore),(gross-h.par)
         ]);
       });
-      return rows;
-    }
-    function exportRoundById(id){
-      const r=jparse(storage.get(keyFor(id))||'null',null);
-      if(!r) return;
-      const rows = buildCSVRowsFromRound(r);
-      downloadCSV(`golf-round_${r.roundId}.csv`, rows);
-    }
-    function exportCurrentRound(){
-      if(!state.round) return;
-      const rows = buildCSVRowsFromRound(state.round);
-      downloadCSV(`golf-round_${state.round.roundId}.csv`, rows);
+
+      const csv = rows.map(r=>r.map(x=>String(x).replace(/"/g,'""')).map(x=>`"${x}"`).join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `round_${r.roundId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
     }
 
     /* ========== Events ========== */
     function bindEvents(){
       // Overview
-      const newBtn = document.getElementById('btn-new-round');
-      if(newBtn) newBtn.addEventListener('click', openSetup);
+      document.getElementById('btn-new-round').addEventListener('click', openSetup);
 
       // Setup
-      const btnSetupCancel = document.getElementById('btn-setup-cancel');
-      if(btnSetupCancel) btnSetupCancel.addEventListener('click', ()=> switchView('overview'));
-      const btnSetupSave = document.getElementById('btn-setup-save');
-      if(btnSetupSave) btnSetupSave.addEventListener('click', startOrUpdateRound);
-      const btnStartOut = document.getElementById('btn-start-out');
-      if(btnStartOut) btnStartOut.addEventListener('click', ()=>{ state.startOrder='OUT'; renderSetup(); });
-      const btnStartIn = document.getElementById('btn-start-in');
-      if(btnStartIn) btnStartIn.addEventListener('click', ()=>{ state.startOrder='IN'; renderSetup(); });
+      document.getElementById('btn-setup-cancel').addEventListener('click', ()=> switchView('overview'));
+      document.getElementById('btn-setup-save').addEventListener('click', startOrUpdateRound);
+      document.getElementById('btn-start-out').addEventListener('click', ()=>{ state.startOrder='OUT'; renderSetup(); });
+      document.getElementById('btn-start-in').addEventListener('click', ()=>{ state.startOrder='IN'; renderSetup(); });
 
       // Tracker
-      const btnTrackerBack = document.getElementById('btn-tracker-back');
-      if(btnTrackerBack) btnTrackerBack.addEventListener('click', ()=> switchView('overview'));
-      const btnOpenScore = document.getElementById('btn-open-scorecard');
-      if(btnOpenScore) btnOpenScore.addEventListener('click', openScorecard);
-      const btnPrev = document.getElementById('btn-prev-hole');
-      if(btnPrev) btnPrev.addEventListener('click', ()=> moveHole(-1));
-      const btnNext = document.getElementById('btn-next-hole');
-      if(btnNext) btnNext.addEventListener('click', ()=> moveHole(1));
+      document.getElementById('btn-tracker-back').addEventListener('click', ()=> switchView('overview'));
+      document.getElementById('btn-open-scorecard').addEventListener('click', openScorecard);
+      document.getElementById('btn-prev-hole').addEventListener('click', ()=> moveHole(-1));
+      document.getElementById('btn-next-hole').addEventListener('click', ()=> moveHole(1));
 
-      const teeClub = document.getElementById('tee-club');
-      if(teeClub) teeClub.addEventListener('change', (e)=> updateHole('teeClub', e.target.value));
+      document.getElementById('tee-club').addEventListener('change', (e)=> updateHole('teeClub', e.target.value));
       document.querySelectorAll('.tee-res-opt').forEach(l=> l.addEventListener('click', ()=> updateHole('teeResult', l.dataset.value)));
       document.querySelectorAll('.tee-dir-opt').forEach(l=> l.addEventListener('click', ()=> updateHole('teeDirection', l.dataset.value)));
 
-      // +/- counters
+      // +/- counters (To SZ, SZ to HO, Result override, Other)
       document.querySelectorAll('[data-key][data-act]').forEach(b=> b.addEventListener('click', ()=> inc(b.dataset.key, b.dataset.act==='+'?1:-1)));
 
       // Putts (1-5)
       document.querySelectorAll('[data-putts]').forEach(b=> b.addEventListener('click', ()=> updateHole('putts', parseInt(b.dataset.putts,10))));
 
-      // Target toggle
-      const tgPar = document.getElementById('tg-par');
-      if(tgPar) tgPar.addEventListener('click', ()=> updateHole('targetGoal','Par'));
-      const tgBogey = document.getElementById('tg-bogey');
-      if(tgBogey) tgBogey.addEventListener('click', ()=> updateHole('targetGoal','Bogey'));
-      const tgDb = document.getElementById('tg-dbogey');
-      if(tgDb) tgDb.addEventListener('click', ()=> updateHole('targetGoal','DoubleBogey'));
+      // Target toggle (Par/Bogey/D.Bogey)
+      document.getElementById('tg-par').addEventListener('click', ()=> updateHole('targetGoal','Par'));
+      document.getElementById('tg-bogey').addEventListener('click', ()=> updateHole('targetGoal','Bogey'));
+      document.getElementById('tg-dbogey').addEventListener('click', ()=> updateHole('targetGoal','DoubleBogey'));
 
-      // Scorecard back & export
-      const btnScoreBack = document.getElementById('btn-scorecard-back');
-      if(btnScoreBack) btnScoreBack.addEventListener('click', ()=> switchView('tracker'));
-      const btnExportRound = document.getElementById('btn-export-round');
-      if(btnExportRound) btnExportRound.addEventListener('click', exportCurrentRound);
+      // Scorecard back
+      document.getElementById('btn-scorecard-back').addEventListener('click', ()=> switchView('tracker'));
     }
 
     /* ========== Init ========== */
     (function init(){
       bindEvents();
       loadRounds();
-      switchView('overview'); // 強制で Rounds だけ表示
     })();
   </script>
 </body>
