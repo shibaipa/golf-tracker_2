@@ -4,7 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Golf Round Tracker</title>
+
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- ===== PWA: manifest / theme / icons (GitHub Pages配下に合わせたパス) ===== -->
+  <link rel="manifest" href="/golf-tracker_2/manifest.webmanifest">
+  <meta name="theme-color" content="#10b981">
+  <link rel="icon" href="/golf-tracker_2/icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="/golf-tracker_2/icons/icon-192.png">
+
   <style>
     html{font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial,Apple Color Emoji,Segoe UI Emoji}
     body::-webkit-scrollbar{display:none}
@@ -109,7 +118,6 @@
       <div class="p-4 bg-white rounded-xl shadow">
         <div class="flex items-center justify-between">
           <div class="text-xl font-bold" id="hole-title">Hole 1 (Par 4)</div>
-          <!-- FIX: iPhoneでも常時表示（hidden md:block を削除） -->
           <div class="space-x-2">
             <button id="btn-prev-hole" class="px-3 py-2 bg-gray-200 rounded-lg">Prev</button>
             <button id="btn-next-hole" class="px-3 py-2 bg-gray-200 rounded-lg">Next</button>
@@ -302,8 +310,8 @@
       round:null, rounds:[],
       parSetup:Array(DEFAULT_HOLES).fill(4),
       startOrder:'OUT',
-      editingId:null, // null=new, string=edit
-      setupTargets: Array(DEFAULT_HOLES).fill('Bogey') // ★ 新規作成時のターゲット保持
+      editingId:null,
+      setupTargets: Array(DEFAULT_HOLES).fill('Bogey')
     };
 
     const playOrderFor=(start)=> start==='IN'
@@ -415,7 +423,6 @@
               <div class="mt-2 flex gap-2 justify-end">
                 <button data-open="${r.roundId}" class="px-3 py-1.5 border rounded-lg hover:bg-gray-50">Open</button>
                 <button data-edit="${r.roundId}" class="px-3 py-1.5 border rounded-lg hover:bg-gray-50">Edit</button>
-                <button data-export="${r.roundId}" class="px-3 py-1.5 border rounded-lg hover:bg-gray-50">Export</button>
                 <button data-del="${r.roundId}" class="px-3 py-1.5 border rounded-lg text-red-600 hover:bg-red-50">Delete</button>
               </div>
             </div>
@@ -431,7 +438,6 @@
         storage.set(idxKey, JSON.stringify(ids));
         loadRounds();
       }));
-      list.querySelectorAll('[data-export]').forEach(b=> b.addEventListener('click',()=> exportRoundCSV(b.dataset.export)));
     }
 
     /* ========== Setup ========== */
@@ -474,7 +480,6 @@
       }
       grid.innerHTML=html;
 
-      // Target total = Σ(par + adj) where adj: Par=0, Bogey=+1, D.Bogey=+2
       const targetTotal = state.parSetup.reduce((s,p,idx)=>{
         const t = state.setupTargets[idx] || 'Bogey';
         const adj = (t==='Par'?0:(t==='Bogey'?1:2));
@@ -493,12 +498,10 @@
       }));
       grid.querySelectorAll('[data-target]').forEach(b=> b.addEventListener('click', ()=>{
         const i=parseInt(b.dataset.hole,10)-1;
-        state.setupTargets[i] = b.dataset.target;         // ★ ここで保持
-        // 見た目のトグル
+        state.setupTargets[i] = b.dataset.target;
         const group=b.parentElement.querySelectorAll('[data-target]');
         group.forEach(x=>x.classList.remove('on'));
         b.classList.add('on');
-        // 即時再計算して表示更新
         renderSetup();
       }));
     }
@@ -528,10 +531,6 @@
     /* ========== Tracker Helpers ========== */
     const curHole = ()=> state.round.holes[state.round.playOrder[state.holeIdx-1]-1];
 
-    // 画像表のロジック:
-    // - targetScore = par + adj(Par=0,Bogey=+1,DBogey=+2)
-    // - targetFrom = (par===3 && targetScore===3) ? 2 : 3
-    // - targetTo   = max(0, targetScore - targetFrom)
     function calcTargetsFor(h){
       const adj = (h.targetGoal==='Bogey'?1:(h.targetGoal==='DoubleBogey'?2:0));
       const targetScore = h.par + adj;
@@ -601,7 +600,6 @@
       document.getElementById('ok-to').textContent = (h.strokesToSZ||0) <= targetTo ? '✅' : '❌';
       document.getElementById('ok-from').textContent = (h.strokesFromSZ||0) <= targetFrom ? '✅' : '❌';
 
-      // Result override with label & warning
       const grossAuto = (h.strokesToSZ||0)+(h.strokesFromSZ||0);
       const warnEl = document.getElementById('result-warning');
       const dispRes = document.getElementById('disp-result');
@@ -638,7 +636,6 @@
       document.getElementById('other-heavyDuff').textContent=h.heavyDuff||0;
       document.getElementById('other-shank').textContent=h.shank||0;
 
-      // Target toggles
       document.getElementById('tg-par').classList.toggle('on', h.targetGoal==='Par');
       document.getElementById('tg-bogey').classList.toggle('on', h.targetGoal==='Bogey');
       document.getElementById('tg-dbogey').classList.toggle('on', h.targetGoal==='DoubleBogey');
@@ -646,7 +643,6 @@
 
     function updateHole(key, val){ const h=curHole(); h[key]=val; save(); renderTracker(); }
 
-    // 「最初の＋」でターゲット値を設定するインクリメント
     function inc(key, delta){
       const h = curHole();
       const {targetScore, targetFrom, targetTo} = calcTargetsFor(h);
@@ -734,45 +730,6 @@
       });
     }
 
-    /* ========== CSV Export (per round) ========== */
-    function exportRoundCSV(id){
-      const raw = storage.get(keyFor(id));
-      if(!raw){ alert('Round not found.'); return; }
-      const r = jparse(raw,null); if(!r){ alert('Invalid round data.'); return; }
-
-      // CSV header
-      const rows = [[
-        'Hole','Par','Target','ToSZ','SZtoHO','Putts','Gross',
-        'TeeClub','TeeResult','TeeDirection',
-        'Bunker','Topped','HeavyDuff','Shank',
-        'vsTarget','vsPar'
-      ]];
-
-      r.playOrder.forEach(no=>{
-        const h = r.holes[no-1];
-        const {targetScore,targetFrom,targetTo}=calcTargetsFor(h);
-        const grossAuto=(h.strokesToSZ||0)+(h.strokesFromSZ||0);
-        const gross = Number.isInteger(h.resultOverride)? h.resultOverride : grossAuto;
-
-        rows.push([
-          no, h.par, targetScore, (h.strokesToSZ||0), (h.strokesFromSZ||0), (h.putts||0), gross,
-          h.teeClub, h.teeResult, h.teeDirection,
-          (h.bunker||0),(h.topped||0),(h.heavyDuff||0),(h.shank||0),
-          (gross-targetScore),(gross-h.par)
-        ]);
-      });
-
-      const csv = rows.map(r=>r.map(x=>String(x).replace(/"/g,'""')).map(x=>`"${x}"`).join(',')).join('\n');
-      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `round_${r.roundId}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(a.href);
-    }
-
     /* ========== Events ========== */
     function bindEvents(){
       // Overview
@@ -794,13 +751,13 @@
       document.querySelectorAll('.tee-res-opt').forEach(l=> l.addEventListener('click', ()=> updateHole('teeResult', l.dataset.value)));
       document.querySelectorAll('.tee-dir-opt').forEach(l=> l.addEventListener('click', ()=> updateHole('teeDirection', l.dataset.value)));
 
-      // +/- counters (To SZ, SZ to HO, Result override, Other)
+      // +/- counters
       document.querySelectorAll('[data-key][data-act]').forEach(b=> b.addEventListener('click', ()=> inc(b.dataset.key, b.dataset.act==='+'?1:-1)));
 
-      // Putts (1-5)
+      // Putts
       document.querySelectorAll('[data-putts]').forEach(b=> b.addEventListener('click', ()=> updateHole('putts', parseInt(b.dataset.putts,10))));
 
-      // Target toggle (Par/Bogey/D.Bogey)
+      // Target toggle
       document.getElementById('tg-par').addEventListener('click', ()=> updateHole('targetGoal','Par'));
       document.getElementById('tg-bogey').addEventListener('click', ()=> updateHole('targetGoal','Bogey'));
       document.getElementById('tg-dbogey').addEventListener('click', ()=> updateHole('targetGoal','DoubleBogey'));
@@ -814,6 +771,17 @@
       bindEvents();
       loadRounds();
     })();
+  </script>
+
+  <!-- ===== PWA: Service Worker register (GitHub Pages配下に合わせたパス) ===== -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/golf-tracker_2/sw.js', { scope: '/golf-tracker_2/' })
+          .then(reg => console.log('SW registered:', reg.scope))
+          .catch(err => console.error('SW registration failed:', err));
+      });
+    }
   </script>
 </body>
 </html>
